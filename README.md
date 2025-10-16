@@ -22,7 +22,11 @@ terraform-cas-pratice/
 │   │   ├── main.tf
 │   │   ├── variables.tf
 │   │   └── outputs.tf
-│   └── cognito/                # Cognito User Pool module
+│   ├── cognito/                # Cognito User Pool module
+│   │   ├── main.tf
+│   │   ├── variables.tf
+│   │   └── outputs.tf
+│   └── rds/                    # RDS Aurora PostgreSQL module
 │       ├── main.tf
 │       ├── variables.tf
 │       └── outputs.tf
@@ -223,6 +227,29 @@ Creates AWS Cognito User Pool with:
 - App client with custom authentication flows
 - Token validity configurations
 
+### RDS Module
+
+Creates an Aurora PostgreSQL Serverless v2 database cluster with:
+- Aurora PostgreSQL engine (version 15.4)
+- Serverless v2 scaling configuration (0.5-1.0 ACU for dev)
+- Database credentials stored in AWS Secrets Manager
+- Security group with VPC-only access
+- Private subnet deployment
+- Automated backups (7 days retention)
+- Enhanced monitoring with CloudWatch
+- Performance Insights enabled
+- Encryption at rest
+
+**Key Resources:**
+- RDS Aurora Cluster
+- RDS Cluster Instance (Writer)
+- Optional Reader Instance
+- DB Subnet Group
+- Security Group
+- Parameter Groups (Cluster & DB)
+- Secrets Manager (credentials)
+- IAM Role for Enhanced Monitoring
+
 ## 🌍 Environments
 
 Each environment has its own configuration with different CIDR blocks to avoid conflicts:
@@ -316,17 +343,194 @@ terraform output
 # private_subnet_ids = ["subnet-zzzzz", "subnet-aaaaa"]
 # cognito_user_pool_id = "us-east-1_xxxxx"
 # cognito_app_client_id = "xxxxx"
+# rds_cluster_endpoint = "dev-aurora-cluster.cluster-xxxxx.us-east-1.rds.amazonaws.com"
+# rds_reader_endpoint = "dev-aurora-cluster.cluster-ro-xxxxx.us-east-1.rds.amazonaws.com"
+# rds_database_name = "cas_cms"
+# rds_port = 5432
+# rds_secrets_manager_name = "dev-db-credentials"
 ```
+
+## 🗄️ Database Configuration
+
+### RDS Aurora PostgreSQL
+
+The RDS module creates an Aurora PostgreSQL Serverless v2 cluster with credentials securely stored in AWS Secrets Manager.
+
+#### Retrieve Database Credentials
+
+To get the database username and password:
+
+```bash
+# Get credentials from Secrets Manager
+aws secretsmanager get-secret-value \
+  --secret-id <environment>-db-credentials \
+  --query SecretString \
+  --output text | jq -r '.'
+
+# Example output:
+# {
+#   "username": "<username>",
+#   "password": "<password>"
+# }
+```
+
+#### Connect to Database
+
+Once you have the credentials, connect using psql:
+
+```bash
+# Get the database endpoint
+DB_ENDPOINT=$(terraform output -raw rds_cluster_endpoint)
+
+# Connect using psql
+psql -h $DB_ENDPOINT \
+     -p 5432 \
+     -U <username> \
+     -d cas_cms
+
+# Or as a one-liner
+psql postgresql://<username>:<password>@$DB_ENDPOINT:5432/cas_cms
+```
+
+#### Connection String Examples
+
+**For Applications:**
+
+```bash
+# PostgreSQL connection string
+postgresql://<username>:<password>@dev-aurora-cluster.cluster-xxxxx.us-east-1.rds.amazonaws.com:5432/cas_cms
+
+# JDBC URL (for Java applications)
+jdbc:postgresql://dev-aurora-cluster.cluster-xxxxx.us-east-1.rds.amazonaws.com:5432/cas_cms
+
+# Node.js (pg library)
+const { Client } = require('pg');
+const client = new Client({
+  host: 'dev-aurora-cluster.cluster-xxxxx.us-east-1.rds.amazonaws.com',
+  port: 5432,
+  database: 'cas_cms',
+  user: '<username>',
+  password: '<password>',
+});
+
+# Python (psycopg2)
+import psycopg2
+conn = psycopg2.connect(
+    host="dev-aurora-cluster.cluster-xxxxx.us-east-1.rds.amazonaws.com",
+    port=5432,
+    database="cas_cms",
+    user="<username>",
+    password="<password>"
+)
+```
+
+#### Retrieve Credentials Programmatically
+
+**AWS CLI:**
+
+```bash
+# Get username
+aws secretsmanager get-secret-value \
+  --secret-id dev-db-credentials \
+  --query SecretString \
+  --output text | jq -r '.username'
+
+# Get password
+aws secretsmanager get-secret-value \
+  --secret-id dev-db-credentials \
+  --query SecretString \
+  --output text | jq -r '.password'
+```
+
+**Python (boto3):**
+
+```python
+import boto3
+import json
+
+def get_db_credentials(secret_name):
+    client = boto3.client('secretsmanager', region_name='us-east-1')
+    response = client.get_secret_value(SecretId=secret_name)
+    secret = json.loads(response['SecretString'])
+    return secret['username'], secret['password']
+
+username, password = get_db_credentials('dev-db-credentials')
+```
+
+**Node.js (AWS SDK):**
+
+```javascript
+const AWS = require('aws-sdk');
+const secretsManager = new AWS.SecretsManager({ region: 'us-east-1' });
+
+async function getDbCredentials(secretName) {
+  const data = await secretsManager.getSecretValue({ SecretId: secretName }).promise();
+  const secret = JSON.parse(data.SecretString);
+  return { username: secret.username, password: secret.password };
+}
+
+const credentials = await getDbCredentials('dev-db-credentials');
+```
+
+#### Database Configuration Options
+
+You can customize the RDS configuration in your environment's `main.tf`:
+
+```hcl
+module "rds" {
+  source = "../../modules/rds"
+
+  env_prefix         = "dev"
+  vpc_id             = module.vpc.vpc_id
+  vpc_cidr           = module.vpc.vpc_cidr
+  private_subnet_ids = module.vpc.private_subnet_ids
+
+  # Database credentials
+  db_username   = "<username>"     # Default: cas_user
+  db_password   = "<password>"     # Set your password (no @, /, ", or spaces)
+  database_name = "cas_cms"        # Default database name
+
+  # Aurora Serverless v2 scaling
+  min_capacity = 0.5               # Minimum ACUs (0.5-128)
+  max_capacity = 1.0               # Maximum ACUs (0.5-128)
+
+  # Backup configuration
+  backup_retention_period = 7      # Days to retain backups
+  
+  # Environment-specific settings
+  skip_final_snapshot  = true      # Set to false for production
+  deletion_protection  = false     # Set to true for production
+  publicly_accessible  = false     # Keep false for security
+
+  # Optional: Create a reader instance
+  create_reader_instance = false   # Set to true if you need read replicas
+}
+```
+
+#### Important Notes
+
+1. **Password Requirements**: RDS passwords cannot contain `/`, `@`, `"`, or spaces. Use other special characters like `!`, `#`, `$`, `%`, etc.
+
+2. **Security**: The database is deployed in private subnets and only accessible from within the VPC (CIDR: 10.x.0.0/16).
+
+3. **Secrets Manager**: Credentials are automatically stored in AWS Secrets Manager with the name `<environment>-db-credentials`.
+
+4. **Scaling**: Aurora Serverless v2 automatically scales between min_capacity and max_capacity based on workload.
+
+5. **Monitoring**: Enhanced monitoring and Performance Insights are enabled by default for development environments.
 
 ## 🔒 Security Notes
 
 - **Never commit** AWS credentials or sensitive values
 - **Use IAM roles** with least privilege principle
 - **Enable MFA** for production AWS accounts
-- **Rotate credentials** regularly
+- **Rotate credentials** regularly using AWS Secrets Manager rotation
 - **Review security groups** and network ACLs
 - **Enable CloudTrail** for audit logging
-- **Use AWS Secrets Manager** for sensitive data
+- **Use AWS Secrets Manager** for sensitive data (already configured for RDS)
+- **Database access** is restricted to VPC CIDR range only
+- **RDS encryption** at rest is enabled by default
+- **Use VPN or bastion host** to access RDS from outside AWS
 
 ## 🐛 Troubleshooting
 
