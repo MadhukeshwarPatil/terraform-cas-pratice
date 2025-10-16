@@ -23,15 +23,18 @@ variable "private_subnet_ids" {
 variable "db_username" {
   description = "Master username for the database"
   type        = string
-  default     = "cas_user"
   sensitive   = true
+  # No default - must be provided via terraform.tfvars or environment variable
+  # Example: export TF_VAR_db_username="your_username"
 }
 
 variable "db_password" {
   description = "Master password for the database"
   type        = string
-  default     = "123CasUser!#"
   sensitive   = true
+  # No default - must be provided via terraform.tfvars or environment variable
+  # Example: export TF_VAR_db_password="your_secure_password"
+  # Password requirements: No /, @, ", or spaces allowed
 }
 
 variable "database_name" {

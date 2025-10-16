@@ -99,7 +99,47 @@ terraform init
 
 This will download the required provider plugins and initialize the backend.
 
-### 4. Review the Plan
+### 4. Configure Database Credentials (IMPORTANT!)
+
+**NEVER hardcode credentials in your code!** Use one of these secure methods:
+
+#### Option 1: Using terraform.tfvars (Recommended for local development)
+
+```bash
+# Copy the example file
+cp terraform.tfvars.example terraform.tfvars
+
+# Edit terraform.tfvars with your credentials
+# This file is in .gitignore and will NOT be committed
+nano terraform.tfvars
+```
+
+Example `terraform.tfvars`:
+```hcl
+db_username = "cas_user"
+db_password = "YourSecurePassword123!#"  # No @, /, ", or spaces
+```
+
+#### Option 2: Using Environment Variables (Recommended for CI/CD)
+
+```bash
+export TF_VAR_db_username="cas_user"
+export TF_VAR_db_password="YourSecurePassword123!#"
+```
+
+#### Option 3: Using Command Line (Quick testing)
+
+```bash
+terraform plan \
+  -var="db_username=cas_user" \
+  -var="db_password=YourSecurePassword123!#"
+```
+
+#### Option 4: AWS Secrets Manager (Best for production)
+
+Modify your Terraform to fetch credentials from AWS Secrets Manager instead of variables.
+
+### 5. Review the Plan
 
 ```bash
 terraform plan
@@ -107,7 +147,7 @@ terraform plan
 
 This shows you what resources will be created.
 
-### 5. Apply the Configuration
+### 6. Apply the Configuration
 
 ```bash
 terraform apply
@@ -115,7 +155,7 @@ terraform apply
 
 Type `yes` when prompted to confirm the creation of resources.
 
-### 6. View Outputs
+### 7. View Outputs
 
 After successful deployment:
 
@@ -521,7 +561,9 @@ module "rds" {
 
 ## 🔒 Security Notes
 
-- **Never commit** AWS credentials or sensitive values
+- **NEVER commit** AWS credentials or sensitive values to version control
+- **NEVER hardcode** database credentials in `.tf` files
+- **Always use** `terraform.tfvars` (which is in `.gitignore`) or environment variables for secrets
 - **Use IAM roles** with least privilege principle
 - **Enable MFA** for production AWS accounts
 - **Rotate credentials** regularly using AWS Secrets Manager rotation
@@ -531,6 +573,14 @@ module "rds" {
 - **Database access** is restricted to VPC CIDR range only
 - **RDS encryption** at rest is enabled by default
 - **Use VPN or bastion host** to access RDS from outside AWS
+
+### Credential Management Best Practices
+
+1. **Development**: Use `terraform.tfvars` locally (never commit it)
+2. **CI/CD**: Use environment variables (`TF_VAR_*`)
+3. **Production**: Fetch credentials from AWS Secrets Manager at runtime
+4. **Team Environments**: Use HashiCorp Vault or AWS Secrets Manager
+5. **Audit**: Regularly review who has access to credentials
 
 ## 🐛 Troubleshooting
 

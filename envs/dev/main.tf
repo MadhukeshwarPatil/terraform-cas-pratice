@@ -28,8 +28,13 @@ module "rds" {
   vpc_cidr           = module.vpc.vpc_cidr
   private_subnet_ids = module.vpc.private_subnet_ids
 
-  db_username     = "cas_user"
-  db_password     = "123CasUser!#"
+  # Credentials should be provided via terraform.tfvars or environment variables
+  # db_username and db_password will be read from:
+  # 1. terraform.tfvars (not committed to git)
+  # 2. Environment variables: TF_VAR_db_username and TF_VAR_db_password
+  # 3. Command line: -var="db_username=xxx" -var="db_password=xxx"
+  db_username     = var.db_username
+  db_password     = var.db_password
   database_name   = "cas_cms"
   
   # Aurora Serverless v2 configuration

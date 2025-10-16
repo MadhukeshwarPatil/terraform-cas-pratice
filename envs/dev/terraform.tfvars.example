@@ -1,0 +1,7 @@
+# Example Terraform Variables File
+# Copy this file to terraform.tfvars and update with your actual values
+# terraform.tfvars is already in .gitignore and will NOT be committed
+
+# Database credentials
+db_username = "cas_user"
+db_password = "YourSecurePassword123!#"  # Change this! No @, /, ", or spaces allowed
