@@ -72,7 +72,7 @@ resource "aws_security_group" "rds" {
 # ------------------------
 resource "aws_rds_cluster_parameter_group" "main" {
   name        = "${var.env_prefix}-aurora-postgres-cluster-pg"
-  family      = "aurora-postgresql15"
+  family      = "aurora-postgresql17"
   description = "Cluster parameter group for ${var.env_prefix} Aurora PostgreSQL"
 
   parameter {
@@ -91,7 +91,7 @@ resource "aws_rds_cluster_parameter_group" "main" {
 # ------------------------
 resource "aws_db_parameter_group" "main" {
   name        = "${var.env_prefix}-aurora-postgres-db-pg"
-  family      = "aurora-postgresql15"
+  family      = "aurora-postgresql17"
   description = "DB parameter group for ${var.env_prefix} Aurora PostgreSQL"
 
   tags = {
@@ -134,6 +134,9 @@ resource "aws_rds_cluster" "main" {
 
   # Enable Performance Insights
   enabled_cloudwatch_logs_exports = ["postgresql"]
+
+  # RDS Extended Support - Disabled
+  engine_lifecycle_support = "open-source-rds-extended-support-disabled"
 
   # Skip final snapshot for non-prod environments
   skip_final_snapshot       = var.skip_final_snapshot

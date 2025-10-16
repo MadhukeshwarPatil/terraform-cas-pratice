@@ -230,7 +230,7 @@ Creates AWS Cognito User Pool with:
 ### RDS Module
 
 Creates an Aurora PostgreSQL Serverless v2 database cluster with:
-- Aurora PostgreSQL engine (version 15.4)
+- Aurora PostgreSQL engine (version 17.4)
 - Serverless v2 scaling configuration (0.5-1.0 ACU for dev)
 - Database credentials stored in AWS Secrets Manager
 - Security group with VPC-only access
