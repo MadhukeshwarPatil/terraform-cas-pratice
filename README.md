@@ -1,4 +1,4 @@
-# Terraform AWS Infrastructure - CAS CMS
+# Terraform AWS Infrastructure - Auth CMS
 
 Production-ready, modular Terraform infrastructure for AWS with VPC networking, Cognito authentication, Lambda-based OTP system, and Aurora PostgreSQL Serverless v2 database.
 
@@ -137,7 +137,7 @@ Add your credentials:
 
 ```hcl
 # Database credentials (no @, /, ", or spaces in password)
-db_username = "cas_user"
+db_username = "auth_user"
 db_password = "YourSecurePassword123!#$"
 ```
 
@@ -548,7 +548,7 @@ aws secretsmanager get-secret-value \
 **Output:**
 ```json
 {
-  "username": "cas_user",
+  "username": "auth_user",
   "password": "YourSecurePassword123!#$"
 }
 ```
@@ -559,26 +559,26 @@ aws secretsmanager get-secret-value \
 
 ```bash
 # Interactive connection
-psql -h "$DB_ENDPOINT" -p 5432 -U cas_user -d cas_cms
+psql -h "$DB_ENDPOINT" -p 5432 -U auth_user -d auth_cms
 
 # One-liner with password from Secrets Manager
 PGPASSWORD=$(aws secretsmanager get-secret-value \
   --secret-id "$SECRET_NAME" \
   --query SecretString \
   --output text | jq -r '.password') \
-psql -h "$DB_ENDPOINT" -p 5432 -U cas_user -d cas_cms
+psql -h "$DB_ENDPOINT" -p 5432 -U auth_user -d auth_cms
 ```
 
 #### Connection Strings
 
 **PostgreSQL:**
 ```
-postgresql://cas_user:YourSecurePassword@dev-aurora-cluster.cluster-xxxxx.us-east-1.rds.amazonaws.com:5432/cas_cms
+postgresql://auth_user:YourSecurePassword@dev-aurora-cluster.cluster-xxxxx.us-east-1.rds.amazonaws.com:5432/auth_cms
 ```
 
 **JDBC (Java):**
 ```
-jdbc:postgresql://dev-aurora-cluster.cluster-xxxxx.us-east-1.rds.amazonaws.com:5432/cas_cms
+jdbc:postgresql://dev-aurora-cluster.cluster-xxxxx.us-east-1.rds.amazonaws.com:5432/auth_cms
 ```
 
 **Node.js (pg library):**
@@ -588,8 +588,8 @@ const { Client } = require('pg');
 const client = new Client({
   host: process.env.DB_ENDPOINT,
   port: 5432,
-  database: 'cas_cms',
-  user: 'cas_user',
+  database: 'auth_cms',
+  user: 'auth_user',
   password: process.env.DB_PASSWORD,
   ssl: { rejectUnauthorized: false }
 });
@@ -604,8 +604,8 @@ import psycopg2
 conn = psycopg2.connect(
     host=os.environ['DB_ENDPOINT'],
     port=5432,
-    database='cas_cms',
-    user='cas_user',
+    database='auth_cms',
+    user='auth_user',
     password=os.environ['DB_PASSWORD'],
     sslmode='require'
 )
@@ -631,7 +631,7 @@ conn = psycopg2.connect(
    # Update password in Secrets Manager
    aws secretsmanager put-secret-value \
      --secret-id dev-db-credentials \
-     --secret-string '{"username":"cas_user","password":"NewPassword123!#"}'
+     --secret-string '{"username":"auth_user","password":"NewPassword123!#"}'
    ```
 
 ### Network Security
@@ -745,7 +745,7 @@ terraform output -json    # JSON format
 | `rds_cluster_endpoint` | Writer endpoint | `dev-aurora-cluster.cluster-xxx.rds.amazonaws.com` |
 | `rds_reader_endpoint` | Reader endpoint | `dev-aurora-cluster.cluster-ro-xxx.rds.amazonaws.com` |
 | `rds_port` | Database port | `5432` |
-| `rds_database_name` | Database name | `cas_cms` |
+| `rds_database_name` | Database name | `auth_cms` |
 | `rds_secrets_manager_name` | Secret name | `dev-db-credentials` |
 | `rds_secrets_manager_arn` | Secret ARN | `arn:aws:secretsmanager:...` |
 

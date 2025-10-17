@@ -46,11 +46,6 @@ module "lambda_cognito_trigger" {
   # Enable jose layer for social login support
   enable_jose_layer = true
   
-  tags = {
-    Environment = "dev"
-    Project     = "CAS-CMS"
-  }
-  
   depends_on = [module.cognito]
 }
 
@@ -133,7 +128,7 @@ module "rds" {
   # 3. Command line: -var="db_username=xxx" -var="db_password=xxx"
   db_username     = var.db_username
   db_password     = var.db_password
-  database_name   = "cas_cms"
+  database_name   = "auth_cms"
   
   # Aurora Serverless v2 configuration
   min_capacity    = 0.5

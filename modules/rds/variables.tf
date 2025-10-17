@@ -40,7 +40,7 @@ variable "db_password" {
 variable "database_name" {
   description = "Name of the default database to create"
   type        = string
-  default     = "cas_cms"
+  default     = "auth_cms"
 }
 
 variable "engine_version" {

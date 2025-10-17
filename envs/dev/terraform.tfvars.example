@@ -2,9 +2,13 @@
 # Copy this file to terraform.tfvars and update with your actual values
 # terraform.tfvars is already in .gitignore and will NOT be committed
 
-# Database credentials
-db_username = "cas_user"
-db_password = "YourSecurePassword123!#"  # Change this! No @, /, ", or spaces allowed
+# Example Terraform variables for dev environment
+# Copy this file to terraform.tfvars and update with your actual values
+# Note: terraform.tfvars is in .gitignore and will NOT be committed
+
+# Database credentials (IMPORTANT: No @, /, ", or spaces in password!)
+db_username = "auth_user"
+db_password = "YourSecurePassword123!#$"  # Use strong password with !#$%^&*()_+- chars
 
 # OTP Secret - Generate a long random hex string (128+ characters)
 # Generate with: openssl rand -hex 64
