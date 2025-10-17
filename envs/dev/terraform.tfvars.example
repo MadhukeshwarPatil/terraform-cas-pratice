@@ -5,3 +5,14 @@
 # Database credentials
 db_username = "cas_user"
 db_password = "YourSecurePassword123!#"  # Change this! No @, /, ", or spaces allowed
+
+# OTP Secret - Generate a long random hex string (128+ characters)
+# Generate with: openssl rand -hex 64
+otp_secret = "your-long-random-hex-string-here-at-least-128-characters-6699a2bf9686a0bde217979c55f767eb4f60090d00e328d8af02759501565791a2d35b3694014fbefd55fcce20f1c1370f9bbef9d04a4092eeddb8561370544b"
+
+# Optional: Social login configuration (uncomment and configure if needed)
+# google_audience      = "your-google-client-id.apps.googleusercontent.com"
+# facebook_app_id      = "your-facebook-app-id"
+# facebook_app_secret  = "your-facebook-app-secret"
+# apple_audience       = "your-apple-service-id"
+

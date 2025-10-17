@@ -1,68 +1,116 @@
-# Terraform AWS Infrastructure
+# Terraform AWS Infrastructure - CAS CMS
 
-A modular Terraform project for managing AWS infrastructure across multiple environments (dev, qa, uat, prod) with VPC networking and AWS Cognito user pools.
+Production-ready, modular Terraform infrastructure for AWS with VPC networking, Cognito authentication, Lambda-based OTP system, and Aurora PostgreSQL Serverless v2 database.
 
 ## 📋 Table of Contents
 
-- [Project Structure](#project-structure)
-- [Prerequisites](#prerequisites)
-- [Quick Start](#quick-start)
-- [Usage](#usage)
-- [Modules](#modules)
-- [Environments](#environments)
-- [Customization](#customization)
-- [Best Practices](#best-practices)
+- [Overview](#-overview)
+- [Architecture](#-architecture)
+- [Prerequisites](#-prerequisites)
+- [Quick Start](#-quick-start)
+- [Project Structure](#-project-structure)
+- [Modules](#-modules)
+- [Environment Configuration](#-environment-configuration)
+- [Lifecycle Management](#️-lifecycle-management)
+- [OTP Authentication](#-otp-authentication)
+- [Database Access](#-database-access)
+- [Security Best Practices](#-security-best-practices)
+- [Troubleshooting](#-troubleshooting)
+- [Outputs Reference](#-outputs-reference)
+- [License](#-license)
 
-## 🏗️ Project Structure
+## 🎯 Overview
+
+This Terraform project provides a complete AWS infrastructure setup with:
+
+- **Multi-Environment Support**: dev, qa, uat, prod with isolated configurations
+- **Network Infrastructure**: VPC with public/private subnets, NAT Gateway, Internet Gateway
+- **Authentication**: AWS Cognito with custom OTP-based authentication via Lambda
+- **Database**: Aurora PostgreSQL Serverless v2 with automatic scaling
+- **Security**: Secrets Manager integration, encrypted storage, VPC isolation
+- **Lifecycle Management**: Proper resource ordering with automatic Lambda trigger attachment/detachment
+
+## 🏗 Architecture
 
 ```
-terraform-cas-pratice/
-├── modules/
-│   ├── vpc/                    # VPC module with subnets, IGW, NAT Gateway
-│   │   ├── main.tf
-│   │   ├── variables.tf
-│   │   └── outputs.tf
-│   ├── cognito/                # Cognito User Pool module
-│   │   ├── main.tf
-│   │   ├── variables.tf
-│   │   └── outputs.tf
-│   └── rds/                    # RDS Aurora PostgreSQL module
-│       ├── main.tf
-│       ├── variables.tf
-│       └── outputs.tf
-├── envs/
-│   ├── dev/                    # Development environment
-│   │   └── main.tf
-│   ├── qa/                     # QA environment
-│   │   └── main.tf
-│   ├── uat/                    # UAT environment
-│   │   └── main.tf
-│   └── prod/                   # Production environment
-│       └── main.tf
-├── provider.tf                 # AWS provider configuration
-├── .gitignore
-└── README.md
+┌─────────────────────────────────────────────────────────────────┐
+│                         AWS Account                              │
+│                                                                  │
+│  ┌────────────────────────────────────────────────────────┐    │
+│  │                    VPC (10.x.0.0/16)                    │    │
+│  │                                                          │    │
+│  │  ┌──────────────────┐      ┌──────────────────┐        │    │
+│  │  │  Public Subnet   │      │  Public Subnet   │        │    │
+│  │  │   us-east-1a     │      │   us-east-1b     │        │    │
+│  │  │                  │      │                  │        │    │
+│  │  │   NAT Gateway    │      │                  │        │    │
+│  │  └────────┬─────────┘      └──────────────────┘        │    │
+│  │           │                                             │    │
+│  │  ┌────────▼─────────┐      ┌──────────────────┐        │    │
+│  │  │  Private Subnet  │      │  Private Subnet  │        │    │
+│  │  │   us-east-1a     │      │   us-east-1b     │        │    │
+│  │  │                  │      │                  │        │    │
+│  │  │  ┌────────────┐  │      │  ┌────────────┐  │        │    │
+│  │  │  │ RDS Aurora │  │      │  │ RDS Aurora │  │        │    │
+│  │  │  │ PostgreSQL │◄─┼──────┼─►│   Reader   │  │        │    │
+│  │  │  │  (Writer)  │  │      │  │ (Optional) │  │        │    │
+│  │  │  └────────────┘  │      │  └────────────┘  │        │    │
+│  │  └──────────────────┘      └──────────────────┘        │    │
+│  └────────────────────────────────────────────────────────┘    │
+│                                                                  │
+│  ┌────────────────────────────────────────────────────────┐    │
+│  │              Cognito User Pool (CUSTOM_AUTH)            │    │
+│  │                                                          │    │
+│  │   Lambda Triggers:                                      │    │
+│  │   • createAuthChallenge   (Generate 6-digit OTP)        │    │
+│  │   • defineAuthChallenge   (Control flow, max 3 tries)   │    │
+│  │   • verifyAuthChallenge   (Validate OTP with SHA-256)   │    │
+│  │                                                          │    │
+│  │   Runtime: Node.js 22.x | Memory: 128 MB | Timeout: 3s │    │
+│  └────────────────────────────────────────────────────────┘    │
+│                                                                  │
+│  ┌────────────────────────────────────────────────────────┐    │
+│  │               AWS Secrets Manager                       │    │
+│  │   • Database credentials (username/password)            │    │
+│  │   • Automatic encryption at rest (AES-256)              │    │
+│  │   • 30-day recovery window                              │    │
+│  └────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ## ✅ Prerequisites
 
-Before you begin, ensure you have the following installed:
+### Required Software
 
-- [Terraform](https://www.terraform.io/downloads.html) >= 1.0
-- [AWS CLI](https://aws.amazon.com/cli/) configured with valid credentials
-- An AWS account with appropriate permissions
+- [Terraform](https://www.terraform.io/downloads.html) >= 1.3.0
+- [AWS CLI](https://aws.amazon.com/cli/) v2
+- Git
+- `jq` (for parsing JSON outputs)
 
-### Configure AWS Credentials
+### AWS Account Setup
 
-```bash
-# Configure AWS CLI with your credentials
-aws configure
+1. **AWS Account** with appropriate IAM permissions:
+   - VPC, EC2 (subnets, NAT, IGW)
+   - Cognito User Pools
+   - Lambda (functions, layers, permissions)
+   - RDS (Aurora Serverless v2)
+   - Secrets Manager
+   - CloudWatch Logs
+   - IAM (roles, policies)
 
-# Or set environment variables
-export AWS_ACCESS_KEY_ID="your-access-key"
-export AWS_SECRET_ACCESS_KEY="your-secret-key"
-export AWS_DEFAULT_REGION="us-east-1"
-```
+2. **Configure AWS CLI**:
+   ```bash
+   aws configure
+   # AWS Access Key ID: YOUR_ACCESS_KEY
+   # AWS Secret Access Key: YOUR_SECRET_KEY
+   # Default region name: us-east-1
+   # Default output format: json
+   ```
+
+3. **Verify credentials**:
+   ```bash
+   aws sts get-caller-identity
+   ```
 
 ## 🚀 Quick Start
 
@@ -73,23 +121,27 @@ git clone https://github.com/MadhukeshwarPatil/terraform-cas-pratice.git
 cd terraform-cas-pratice
 ```
 
-### 2. Choose Your Environment
+### 2. Configure Database Credentials
 
-Navigate to the environment you want to deploy:
+**IMPORTANT**: Never hardcode credentials in Terraform files!
+
+Create `envs/dev/terraform.tfvars`:
 
 ```bash
-# For Development
 cd envs/dev
-
-# For QA
-cd envs/qa
-
-# For UAT
-cd envs/uat
-
-# For Production
-cd envs/prod
+cp terraform.tfvars.example terraform.tfvars
+nano terraform.tfvars
 ```
+
+Add your credentials:
+
+```hcl
+# Database credentials (no @, /, ", or spaces in password)
+db_username = "cas_user"
+db_password = "YourSecurePassword123!#$"
+```
+
+> **Note**: `terraform.tfvars` is in `.gitignore` and will never be committed.
 
 ### 3. Initialize Terraform
 
@@ -97,65 +149,33 @@ cd envs/prod
 terraform init
 ```
 
-This will download the required provider plugins and initialize the backend.
+This will download the required provider plugins (AWS and Null providers).
 
-### 4. Configure Database Credentials (IMPORTANT!)
-
-**NEVER hardcode credentials in your code!** Use one of these secure methods:
-
-#### Option 1: Using terraform.tfvars (Recommended for local development)
-
-```bash
-# Copy the example file
-cp terraform.tfvars.example terraform.tfvars
-
-# Edit terraform.tfvars with your credentials
-# This file is in .gitignore and will NOT be committed
-nano terraform.tfvars
-```
-
-Example `terraform.tfvars`:
-```hcl
-db_username = "cas_user"
-db_password = "YourSecurePassword123!#"  # No @, /, ", or spaces
-```
-
-#### Option 2: Using Environment Variables (Recommended for CI/CD)
-
-```bash
-export TF_VAR_db_username="cas_user"
-export TF_VAR_db_password="YourSecurePassword123!#"
-```
-
-#### Option 3: Using Command Line (Quick testing)
-
-```bash
-terraform plan \
-  -var="db_username=cas_user" \
-  -var="db_password=YourSecurePassword123!#"
-```
-
-#### Option 4: AWS Secrets Manager (Best for production)
-
-Modify your Terraform to fetch credentials from AWS Secrets Manager instead of variables.
-
-### 5. Review the Plan
+### 4. Review the Plan
 
 ```bash
 terraform plan
 ```
 
-This shows you what resources will be created.
+This shows you what resources will be created (39 resources).
 
-### 6. Apply the Configuration
+### 5. Deploy Infrastructure
 
 ```bash
 terraform apply
 ```
 
-Type `yes` when prompted to confirm the creation of resources.
+Type `yes` when prompted. Deployment takes **~10-15 minutes**.
 
-### 7. View Outputs
+**What gets deployed:**
+- ✅ VPC with 4 subnets, NAT Gateway, Internet Gateway
+- ✅ Cognito User Pool WITHOUT triggers initially
+- ✅ Lambda functions (createAuthChallenge, defineAuthChallenge, verifyAuthChallenge)
+- ✅ **null_resource automatically attaches Lambda triggers** to Cognito
+- ✅ RDS Aurora Serverless v2 cluster
+- ✅ Secrets Manager with database credentials
+
+### 6. View Outputs
 
 After successful deployment:
 
@@ -163,459 +183,588 @@ After successful deployment:
 terraform output
 ```
 
-## 📖 Usage
+**Key Outputs:**
+- VPC ID and subnet IDs
+- Cognito User Pool ID and App Client ID
+- Lambda function ARNs
+- RDS cluster endpoint
+- Secrets Manager secret name
 
-### Deploy Infrastructure
+### 7. Destroy Infrastructure
 
-#### Development Environment
-
-```bash
-cd envs/dev
-terraform init
-terraform plan
-terraform apply -auto-approve
-```
-
-#### QA Environment
+To clean up all resources:
 
 ```bash
-cd envs/qa
-terraform init
-terraform plan
-terraform apply -auto-approve
-```
-
-#### UAT Environment
-
-```bash
-cd envs/uat
-terraform init
-terraform plan
-terraform apply -auto-approve
-```
-
-#### Production Environment
-
-```bash
-cd envs/prod
-terraform init
-terraform plan
-terraform apply -auto-approve
-```
-
-### Destroy Infrastructure
-
-To destroy all resources in an environment:
-
-```bash
-cd envs/<environment>
 terraform destroy
 ```
 
-Or with auto-approve:
+**Lifecycle Order (Automatic):**
+- ✅ **null_resource detaches Lambda triggers** from Cognito
+- ✅ Lambda permissions removed
+- ✅ Lambda functions deleted
+- ✅ Cognito deleted
+- ✅ RDS cluster deleted
+- ✅ VPC infrastructure deleted
 
-```bash
-terraform destroy -auto-approve
+## 📁 Project Structure
+
 ```
-
-### Validate Configuration
-
-Check if your Terraform configuration is valid:
-
-```bash
-terraform validate
-```
-
-### Format Code
-
-Format your Terraform files:
-
-```bash
-terraform fmt -recursive
+terraform-cas-pratice/
+├── provider.tf                        # AWS + Null providers
+├── .gitignore                         # Excludes .tfvars, .tfstate, etc.
+├── README.md                          # This file
+│
+├── modules/                           # Reusable Terraform modules
+│   ├── vpc/                           # VPC with subnets, NAT, IGW
+│   │   ├── main.tf
+│   │   ├── variables.tf
+│   │   └── outputs.tf
+│   │
+│   ├── cognito/                       # Cognito User Pool + Client
+│   │   ├── main.tf                    # Dynamic lambda_config block
+│   │   ├── variables.tf
+│   │   └── outputs.tf
+│   │
+│   ├── lambda_cognito_trigger/        # Lambda auth functions
+│   │   ├── main.tf
+│   │   ├── variables.tf
+│   │   ├── outputs.tf
+│   │   ├── README.md                  # Lambda documentation
+│   │   ├── build/                     # Generated Lambda zips
+│   │   └── src/
+│   │       ├── createAuthChallenge/
+│   │       │   └── index.mjs          # OTP generation
+│   │       ├── defineAuthChallenge/
+│   │       │   └── index.mjs          # Flow control
+│   │       └── verifyAuthChallenge/
+│   │           └── index.mjs          # OTP validation
+│   │
+│   └── rds/                           # Aurora PostgreSQL
+│       ├── main.tf
+│       ├── variables.tf
+│       └── outputs.tf
+│
+├── envs/                              # Environment-specific configs
+│   ├── dev/
+│   │   ├── main.tf                    # Dev configuration
+│   │   ├── variables.tf               # Dev variables
+│   │   ├── terraform.tfvars.example   # Example credentials
+│   │   └── terraform.tfvars           # Your credentials (gitignored)
+│   ├── qa/
+│   │   └── main.tf
+│   ├── uat/
+│   │   └── main.tf
+│   └── prod/
+│       └── main.tf
+│
+└── scripts/
+    └── attach-lambda-triggers.sh      # Legacy script (not needed)
 ```
 
 ## 🧩 Modules
 
 ### VPC Module
 
-Creates a complete VPC infrastructure with:
-- VPC with customizable CIDR block
-- 2 Public Subnets (with Internet Gateway)
-- 2 Private Subnets (with NAT Gateway)
-- Route tables and associations
-- Environment-specific naming
+Creates complete network infrastructure:
 
-**Key Resources:**
-- VPC
-- Internet Gateway
-- NAT Gateway with Elastic IP
-- Public and Private Subnets
-- Public and Private Route Tables
+**Resources:**
+- VPC (10.x.0.0/16) with DNS support
+- 2 Public Subnets (us-east-1a, us-east-1b) with auto-assign public IP
+- 2 Private Subnets (us-east-1a, us-east-1b)
+- Internet Gateway for public subnets
+- NAT Gateway with Elastic IP for private subnets
+- Route tables and associations
+
+**Key Features:**
+- Multi-AZ deployment for high availability
+- Isolated public/private networks
+- Environment-specific CIDR blocks
 
 ### Cognito Module
 
-Creates AWS Cognito User Pool with:
-- Email, phone number, and preferred username as required attributes
-- Custom attributes for OTP authentication:
-  - `custom:otp` (6-digit: 100000-999999)
-  - `custom:otp_attempts`
-  - `custom:otp_exp`
-  - `custom:otp_hash`
-  - `custom:otp_sid`
-  - `custom:dob`
-  - `custom:locale`
-- App client with custom authentication flows
-- Token validity configurations
+User authentication service with Lambda trigger integration:
+
+**Resources:**
+- Cognito User Pool with custom attributes
+- App Client with CUSTOM_AUTH flow
+- Dynamic Lambda trigger configuration
+
+**Custom Attributes:**
+- `custom:otp` - 6-digit OTP code
+- `custom:otp_attempts` - Failed attempt counter
+- `custom:otp_exp` - Expiration timestamp
+- `custom:otp_hash` - SHA-256 hash for validation
+- `custom:otp_sid` - Session ID
+- `custom:dob` - Date of birth
+- `custom:locale` - User locale preference
+
+**Authentication Flows:**
+- ALLOW_CUSTOM_AUTH (OTP authentication)
+- ALLOW_REFRESH_TOKEN_AUTH
+
+### Lambda Cognito Trigger Module
+
+Custom OTP-based authentication system:
+
+**Lambda Functions:**
+
+1. **createAuthChallenge**
+   - Generates 6-digit OTP (100000-999999)
+   - Creates SHA-256 hash for secure storage
+   - Logs OTP to CloudWatch (dev) or sends via SMS/Email (prod)
+   - Sets 5-minute expiration
+
+2. **defineAuthChallenge**
+   - Controls authentication flow
+   - Enforces maximum 3 attempts per session
+   - Issues tokens on successful validation
+
+3. **verifyAuthChallenge**
+   - Validates OTP using timing-safe HMAC-SHA256 comparison
+   - Prevents timing attacks
+   - Updates attempt counter
+
+**Configuration:**
+- Runtime: Node.js 22.x
+- Memory: 128 MB
+- Timeout: 3 seconds
+- CloudWatch Logs: 7-day retention
 
 ### RDS Module
 
-Creates an Aurora PostgreSQL Serverless v2 database cluster with:
-- Aurora PostgreSQL engine (version 17.4)
-- Serverless v2 scaling configuration (0.5-1.0 ACU for dev)
-- Database credentials stored in AWS Secrets Manager
-- Security group with VPC-only access
-- Private subnet deployment
-- Automated backups (7 days retention)
-- Enhanced monitoring with CloudWatch
-- Performance Insights enabled
-- Encryption at rest
+Aurora PostgreSQL Serverless v2 database:
 
-**Key Resources:**
-- RDS Aurora Cluster
-- RDS Cluster Instance (Writer)
+**Resources:**
+- Aurora Cluster (PostgreSQL 17.4)
+- Writer Instance (db.serverless)
 - Optional Reader Instance
-- DB Subnet Group
-- Security Group
-- Parameter Groups (Cluster & DB)
-- Secrets Manager (credentials)
+- DB Subnet Group (private subnets)
+- Security Group (VPC-only access)
+- Parameter Groups (cluster & DB)
+- Secrets Manager Secret for credentials
 - IAM Role for Enhanced Monitoring
 
-## 🌍 Environments
+**Features:**
+- **Serverless v2:** Auto-scales (0.5-1.0 ACU for dev)
+- **Encryption:** At rest enabled by default
+- **Backups:** 7-day retention, automated
+- **Monitoring:** Enhanced monitoring + Performance Insights (7-day retention)
+- **High Availability:** Multi-AZ deployment
+- **Secure Storage:** Credentials in Secrets Manager (30-day recovery window)
 
-Each environment has its own configuration with different CIDR blocks to avoid conflicts:
+## 🌍 Environment Configuration
 
-| Environment | VPC CIDR      | Public Subnets                    | Private Subnets                   |
-|-------------|---------------|-----------------------------------|-----------------------------------|
-| **dev**     | 10.0.0.0/16   | 10.0.1.0/24, 10.0.2.0/24         | 10.0.3.0/24, 10.0.4.0/24         |
-| **qa**      | 10.1.0.0/16   | 10.1.1.0/24, 10.1.2.0/24         | 10.1.3.0/24, 10.1.4.0/24         |
-| **uat**     | 10.2.0.0/16   | 10.2.1.0/24, 10.2.2.0/24         | 10.2.3.0/24, 10.2.4.0/24         |
-| **prod**    | 10.3.0.0/16   | 10.3.1.0/24, 10.3.2.0/24         | 10.3.3.0/24, 10.3.4.0/24         |
+Each environment has isolated CIDR blocks to prevent conflicts:
 
-## 🔧 Customization
+| Environment | VPC CIDR    | Public Subnets              | Private Subnets             | RDS Scaling |
+|-------------|-------------|-----------------------------|-----------------------------|-------------|
+| **dev**     | 10.0.0.0/16 | 10.0.1.0/24, 10.0.2.0/24   | 10.0.3.0/24, 10.0.4.0/24   | 0.5-1.0 ACU |
+| **qa**      | 10.1.0.0/16 | 10.1.1.0/24, 10.1.2.0/24   | 10.1.3.0/24, 10.1.4.0/24   | 0.5-2.0 ACU |
+| **uat**     | 10.2.0.0/16 | 10.2.1.0/24, 10.2.2.0/24   | 10.2.3.0/24, 10.2.4.0/24   | 1.0-4.0 ACU |
+| **prod**    | 10.3.0.0/16 | 10.3.1.0/24, 10.3.2.0/24   | 10.3.3.0/24, 10.3.4.0/24   | 2.0-8.0 ACU |
 
-### Modify VPC CIDR Blocks
+**Availability Zones:** us-east-1a, us-east-1b (can be customized)
 
-Edit the `main.tf` file in your chosen environment:
+## ⚙️ Lifecycle Management
 
-```hcl
-module "vpc" {
-  source = "../../modules/vpc"
+This project implements **proper resource ordering** to avoid circular dependencies and ensure clean teardown.
 
-  env_prefix           = "dev"
-  vpc_cidr             = "10.0.0.0/16"           # Change this
-  public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24"]   # Change these
-  private_subnet_cidrs = ["10.0.3.0/24", "10.0.4.0/24"]   # Change these
-  availability_zones   = ["us-east-1a", "us-east-1b"]     # Change these
-}
+### Deployment Order
+
+```
+1. VPC Infrastructure → Created first
+2. Cognito User Pool   → Created WITHOUT Lambda triggers
+3. Lambda Functions    → Created with Cognito dependency
+4. null_resource       → Attaches triggers via AWS CLI
+5. RDS Aurora          → Created last (~10-15 min)
 ```
 
-### Change AWS Region
+### Destruction Order
 
-Edit the `provider.tf` file in the root directory:
-
-```hcl
-provider "aws" {
-  region = "us-east-1"  # Change to your preferred region
-}
+```
+1. null_resource       → Detaches triggers (AWS CLI)
+2. Lambda Permissions  → Removed
+3. Lambda Functions    → Deleted
+4. Cognito             → Deleted (no triggers attached)
+5. RDS Aurora          → Cluster + Instance deleted
+6. VPC Infrastructure  → Deleted last
 ```
 
-### Add More Environments
+### Implementation
 
-1. Create a new directory under `envs/`:
-   ```bash
-   mkdir envs/staging
-   ```
+The `null_resource` in `envs/dev/main.tf` handles trigger lifecycle:
 
-2. Create a `main.tf` file with your configuration:
-   ```bash
-   cp envs/dev/main.tf envs/staging/main.tf
-   ```
-
-3. Update the environment name and CIDR blocks in the new `main.tf`
-
-### Enable Lambda Triggers for Cognito
-
-In your environment's `main.tf`:
-
-```hcl
-module "cognito" {
-  source = "../../modules/cognito"
-
-  env_prefix                        = "dev"
-  enable_lambda_triggers            = true
-  create_auth_challenge_lambda_arn  = "arn:aws:lambda:..."
-  define_auth_challenge_lambda_arn  = "arn:aws:lambda:..."
-  verify_auth_challenge_lambda_arn  = "arn:aws:lambda:..."
-}
+**Create Provisioner (attaches triggers):**
+```bash
+aws cognito-idp update-user-pool \
+  --user-pool-id ${POOL_ID} \
+  --lambda-config \
+    CreateAuthChallenge=${ARN},\
+    DefineAuthChallenge=${ARN},\
+    VerifyAuthChallengeResponse=${ARN}
 ```
 
-## 💡 Best Practices
+**Destroy Provisioner (detaches triggers):**
+```bash
+aws cognito-idp update-user-pool \
+  --user-pool-id ${POOL_ID} \
+  --lambda-config '{}'
+```
 
-1. **Always run `terraform plan` before `apply`** to review changes
-2. **Use separate state files** for each environment (already configured)
-3. **Never commit `.tfvars` files** with sensitive data (already in .gitignore)
-4. **Tag your resources** properly (already configured with environment tags)
-5. **Test in dev first**, then promote to QA → UAT → Prod
-6. **Use remote state** for production environments (configure S3 backend)
-7. **Enable state locking** with DynamoDB for team environments
-8. **Review outputs** after deployment to get resource IDs
+**Benefits:**
+- ✅ No circular dependencies
+- ✅ Automatic trigger attachment on create
+- ✅ Automatic trigger detachment on destroy
+- ✅ Clean state management
+- ✅ Idempotent operations
 
-## 📊 Outputs
+## 🔐 OTP Authentication
 
-After deployment, you can view the created resource IDs:
+### How It Works
+
+1. **User initiates auth** with username (email/phone)
+2. **Lambda generates OTP** (6-digit code: 100000-999999)
+3. **OTP sent to user** (CloudWatch logs in dev, SMS/Email in prod)
+4. **User submits OTP**
+5. **Lambda validates OTP** (timing-safe SHA-256 comparison)
+6. **Tokens issued** on success (ID, Access, Refresh tokens)
+
+### Testing OTP Flow
+
+#### Step 1: Create a Test User
 
 ```bash
-terraform output
+USER_POOL_ID=$(cd envs/dev && terraform output -raw cognito_user_pool_id)
 
-# Example outputs:
-# vpc_id = "vpc-xxxxx"
-# public_subnet_ids = ["subnet-xxxxx", "subnet-yyyyy"]
-# private_subnet_ids = ["subnet-zzzzz", "subnet-aaaaa"]
-# cognito_user_pool_id = "us-east-1_xxxxx"
-# cognito_app_client_id = "xxxxx"
-# rds_cluster_endpoint = "dev-aurora-cluster.cluster-xxxxx.us-east-1.rds.amazonaws.com"
-# rds_reader_endpoint = "dev-aurora-cluster.cluster-ro-xxxxx.us-east-1.rds.amazonaws.com"
-# rds_database_name = "cas_cms"
-# rds_port = 5432
-# rds_secrets_manager_name = "dev-db-credentials"
+aws cognito-idp admin-create-user \
+  --user-pool-id "$USER_POOL_ID" \
+  --username "test@example.com" \
+  --user-attributes \
+    Name=email,Value=test@example.com \
+    Name=email_verified,Value=true \
+  --message-action SUPPRESS
 ```
 
-## 🗄️ Database Configuration
-
-### RDS Aurora PostgreSQL
-
-The RDS module creates an Aurora PostgreSQL Serverless v2 cluster with credentials securely stored in AWS Secrets Manager.
-
-#### Retrieve Database Credentials
-
-To get the database username and password:
+#### Step 2: Initiate Authentication
 
 ```bash
-# Get credentials from Secrets Manager
+CLIENT_ID=$(cd envs/dev && terraform output -raw cognito_app_client_id)
+
+aws cognito-idp initiate-auth \
+  --auth-flow CUSTOM_AUTH \
+  --client-id "$CLIENT_ID" \
+  --auth-parameters USERNAME=test@example.com
+```
+
+**Response:**
+```json
+{
+  "ChallengeName": "CUSTOM_CHALLENGE",
+  "Session": "...",
+  "ChallengeParameters": {
+    "USERNAME": "test@example.com"
+  }
+}
+```
+
+#### Step 3: Check CloudWatch for OTP
+
+```bash
+aws logs tail /aws/lambda/createAuthChallenge --follow
+```
+
+Look for: `Generated OTP: 123456`
+
+#### Step 4: Submit OTP
+
+```bash
+aws cognito-idp respond-to-auth-challenge \
+  --client-id "$CLIENT_ID" \
+  --challenge-name CUSTOM_CHALLENGE \
+  --session "<SESSION_FROM_STEP_2>" \
+  --challenge-responses USERNAME=test@example.com,ANSWER=123456
+```
+
+**Success Response:**
+```json
+{
+  "AuthenticationResult": {
+    "AccessToken": "eyJra...",
+    "ExpiresIn": 3600,
+    "TokenType": "Bearer",
+    "RefreshToken": "eyJjd...",
+    "IdToken": "eyJra..."
+  }
+}
+```
+
+### Authentication Flow Diagram
+
+```
+User → InitiateAuth(CUSTOM_AUTH)
+  ↓
+Define Auth Challenge (1st attempt)
+  ↓ (issue CUSTOM_CHALLENGE)
+Create Auth Challenge (generate 6-digit OTP)
+  ↓ (send OTP via CloudWatch/SMS/Email)
+User receives OTP
+  ↓
+User → RespondToAuthChallenge(OTP)
+  ↓
+Verify Auth Challenge (validate OTP with SHA-256)
+  ↓
+If valid → Define Auth Challenge → Issue Tokens ✓
+If invalid → Retry (max 3 attempts) → Fail Authentication ✗
+```
+
+### Security Features
+
+- ✅ **6-digit OTP** (100000-999999)
+- ✅ **5-minute expiration** window
+- ✅ **SHA-256 hash storage** (not plaintext)
+- ✅ **Timing-safe comparison** (prevents timing attacks)
+- ✅ **Maximum 3 attempts** per session
+- ✅ **CloudWatch logging** for audit trail
+- ✅ **Session-based validation** (otp_sid)
+
+## 💾 Database Access
+
+### Get Database Credentials
+
+```bash
+# From Terraform outputs
+cd envs/dev
+DB_ENDPOINT=$(terraform output -raw rds_cluster_endpoint)
+DB_NAME=$(terraform output -raw rds_database_name)
+SECRET_NAME=$(terraform output -raw rds_secrets_manager_name)
+
+# From Secrets Manager
 aws secretsmanager get-secret-value \
-  --secret-id <environment>-db-credentials \
+  --secret-id "$SECRET_NAME" \
   --query SecretString \
   --output text | jq -r '.'
-
-# Example output:
-# {
-#   "username": "<username>",
-#   "password": "<password>"
-# }
 ```
 
-#### Connect to Database
-
-Once you have the credentials, connect using psql:
-
-```bash
-# Get the database endpoint
-DB_ENDPOINT=$(terraform output -raw rds_cluster_endpoint)
-
-# Connect using psql
-psql -h $DB_ENDPOINT \
-     -p 5432 \
-     -U <username> \
-     -d cas_cms
-
-# Or as a one-liner
-psql postgresql://<username>:<password>@$DB_ENDPOINT:5432/cas_cms
+**Output:**
+```json
+{
+  "username": "cas_user",
+  "password": "YourSecurePassword123!#$"
+}
 ```
 
-#### Connection String Examples
+### Connect to Database
 
-**For Applications:**
+#### Using psql
 
 ```bash
-# PostgreSQL connection string
-postgresql://<username>:<password>@dev-aurora-cluster.cluster-xxxxx.us-east-1.rds.amazonaws.com:5432/cas_cms
+# Interactive connection
+psql -h "$DB_ENDPOINT" -p 5432 -U cas_user -d cas_cms
 
-# JDBC URL (for Java applications)
+# One-liner with password from Secrets Manager
+PGPASSWORD=$(aws secretsmanager get-secret-value \
+  --secret-id "$SECRET_NAME" \
+  --query SecretString \
+  --output text | jq -r '.password') \
+psql -h "$DB_ENDPOINT" -p 5432 -U cas_user -d cas_cms
+```
+
+#### Connection Strings
+
+**PostgreSQL:**
+```
+postgresql://cas_user:YourSecurePassword@dev-aurora-cluster.cluster-xxxxx.us-east-1.rds.amazonaws.com:5432/cas_cms
+```
+
+**JDBC (Java):**
+```
 jdbc:postgresql://dev-aurora-cluster.cluster-xxxxx.us-east-1.rds.amazonaws.com:5432/cas_cms
+```
 
-# Node.js (pg library)
+**Node.js (pg library):**
+```javascript
 const { Client } = require('pg');
+
 const client = new Client({
-  host: 'dev-aurora-cluster.cluster-xxxxx.us-east-1.rds.amazonaws.com',
+  host: process.env.DB_ENDPOINT,
   port: 5432,
   database: 'cas_cms',
-  user: '<username>',
-  password: '<password>',
+  user: 'cas_user',
+  password: process.env.DB_PASSWORD,
+  ssl: { rejectUnauthorized: false }
 });
 
-# Python (psycopg2)
+await client.connect();
+```
+
+**Python (psycopg2):**
+```python
 import psycopg2
+
 conn = psycopg2.connect(
-    host="dev-aurora-cluster.cluster-xxxxx.us-east-1.rds.amazonaws.com",
+    host=os.environ['DB_ENDPOINT'],
     port=5432,
-    database="cas_cms",
-    user="<username>",
-    password="<password>"
+    database='cas_cms',
+    user='cas_user',
+    password=os.environ['DB_PASSWORD'],
+    sslmode='require'
 )
 ```
 
-#### Retrieve Credentials Programmatically
+## 🔒 Security Best Practices
 
-**AWS CLI:**
+### Credential Management
 
-```bash
-# Get username
-aws secretsmanager get-secret-value \
-  --secret-id dev-db-credentials \
-  --query SecretString \
-  --output text | jq -r '.username'
+1. **Never commit credentials** to version control
+   - ✅ Use `terraform.tfvars` (gitignored)
+   - ✅ Use environment variables (`TF_VAR_*`)
+   - ✅ Use AWS Secrets Manager
+   - ❌ Never hardcode in `.tf` files
 
-# Get password
-aws secretsmanager get-secret-value \
-  --secret-id dev-db-credentials \
-  --query SecretString \
-  --output text | jq -r '.password'
-```
+2. **Password requirements**
+   - Minimum 8 characters
+   - Mix of uppercase, lowercase, numbers, symbols
+   - Avoid: `/`, `@`, `"`, spaces
 
-**Python (boto3):**
+3. **Rotate credentials regularly**
+   ```bash
+   # Update password in Secrets Manager
+   aws secretsmanager put-secret-value \
+     --secret-id dev-db-credentials \
+     --secret-string '{"username":"cas_user","password":"NewPassword123!#"}'
+   ```
 
-```python
-import boto3
-import json
+### Network Security
 
-def get_db_credentials(secret_name):
-    client = boto3.client('secretsmanager', region_name='us-east-1')
-    response = client.get_secret_value(SecretId=secret_name)
-    secret = json.loads(response['SecretString'])
-    return secret['username'], secret['password']
+- **RDS in private subnets** (no internet access)
+- **Security group** allows only VPC CIDR (10.x.0.0/16)
+- **Use VPN or bastion host** for external access
+- **Enable VPC Flow Logs** for monitoring
 
-username, password = get_db_credentials('dev-db-credentials')
-```
+### IAM Best Practices
 
-**Node.js (AWS SDK):**
-
-```javascript
-const AWS = require('aws-sdk');
-const secretsManager = new AWS.SecretsManager({ region: 'us-east-1' });
-
-async function getDbCredentials(secretName) {
-  const data = await secretsManager.getSecretValue({ SecretId: secretName }).promise();
-  const secret = JSON.parse(data.SecretString);
-  return { username: secret.username, password: secret.password };
-}
-
-const credentials = await getDbCredentials('dev-db-credentials');
-```
-
-#### Database Configuration Options
-
-You can customize the RDS configuration in your environment's `main.tf`:
-
-```hcl
-module "rds" {
-  source = "../../modules/rds"
-
-  env_prefix         = "dev"
-  vpc_id             = module.vpc.vpc_id
-  vpc_cidr           = module.vpc.vpc_cidr
-  private_subnet_ids = module.vpc.private_subnet_ids
-
-  # Database credentials
-  db_username   = "<username>"     # Default: cas_user
-  db_password   = "<password>"     # Set your password (no @, /, ", or spaces)
-  database_name = "cas_cms"        # Default database name
-
-  # Aurora Serverless v2 scaling
-  min_capacity = 0.5               # Minimum ACUs (0.5-128)
-  max_capacity = 1.0               # Maximum ACUs (0.5-128)
-
-  # Backup configuration
-  backup_retention_period = 7      # Days to retain backups
-  
-  # Environment-specific settings
-  skip_final_snapshot  = true      # Set to false for production
-  deletion_protection  = false     # Set to true for production
-  publicly_accessible  = false     # Keep false for security
-
-  # Optional: Create a reader instance
-  create_reader_instance = false   # Set to true if you need read replicas
-}
-```
-
-#### Important Notes
-
-1. **Password Requirements**: RDS passwords cannot contain `/`, `@`, `"`, or spaces. Use other special characters like `!`, `#`, `$`, `%`, etc.
-
-2. **Security**: The database is deployed in private subnets and only accessible from within the VPC (CIDR: 10.x.0.0/16).
-
-3. **Secrets Manager**: Credentials are automatically stored in AWS Secrets Manager with the name `<environment>-db-credentials`.
-
-4. **Scaling**: Aurora Serverless v2 automatically scales between min_capacity and max_capacity based on workload.
-
-5. **Monitoring**: Enhanced monitoring and Performance Insights are enabled by default for development environments.
-
-## 🔒 Security Notes
-
-- **NEVER commit** AWS credentials or sensitive values to version control
-- **NEVER hardcode** database credentials in `.tf` files
-- **Always use** `terraform.tfvars` (which is in `.gitignore`) or environment variables for secrets
-- **Use IAM roles** with least privilege principle
-- **Enable MFA** for production AWS accounts
-- **Rotate credentials** regularly using AWS Secrets Manager rotation
-- **Review security groups** and network ACLs
+- **Principle of least privilege** for all IAM roles
+- **Enable MFA** for AWS console access
+- **Use IAM roles** instead of access keys
+- **Rotate access keys** every 90 days
 - **Enable CloudTrail** for audit logging
-- **Use AWS Secrets Manager** for sensitive data (already configured for RDS)
-- **Database access** is restricted to VPC CIDR range only
-- **RDS encryption** at rest is enabled by default
-- **Use VPN or bastion host** to access RDS from outside AWS
-
-### Credential Management Best Practices
-
-1. **Development**: Use `terraform.tfvars` locally (never commit it)
-2. **CI/CD**: Use environment variables (`TF_VAR_*`)
-3. **Production**: Fetch credentials from AWS Secrets Manager at runtime
-4. **Team Environments**: Use HashiCorp Vault or AWS Secrets Manager
-5. **Audit**: Regularly review who has access to credentials
 
 ## 🐛 Troubleshooting
 
 ### Common Issues
 
-1. **Provider initialization fails**
-   ```bash
-   rm -rf .terraform .terraform.lock.hcl
-   terraform init
-   ```
+#### 1. Terraform Init Fails
 
-2. **State lock timeout**
-   ```bash
-   # Manually unlock (use with caution)
-   terraform force-unlock <LOCK_ID>
-   ```
+```bash
+# Clear Terraform cache
+rm -rf .terraform .terraform.lock.hcl
 
-3. **Resource already exists**
-   ```bash
-   # Import existing resource
-   terraform import <resource_type>.<resource_name> <resource_id>
-   ```
+# Re-initialize
+terraform init
+```
+
+#### 2. AWS Credentials Not Found
+
+```bash
+# Verify AWS configuration
+aws sts get-caller-identity
+
+# Re-configure if needed
+aws configure
+```
+
+#### 3. RDS Password Invalid
+
+**Error:** Password cannot contain `/`, `@`, `"`, or spaces
+
+**Solution:** Use only alphanumeric and these special chars: `!#$%^&*()_+-=`
+
+#### 4. Lambda OTP Not Working
+
+```bash
+# Check Lambda logs
+aws logs tail /aws/lambda/createAuthChallenge --follow
+aws logs tail /aws/lambda/verifyAuthChallenge --follow
+
+# Verify triggers are attached
+aws cognito-idp describe-user-pool \
+  --user-pool-id <USER_POOL_ID> \
+  --query 'UserPool.LambdaConfig'
+```
+
+#### 5. Database Connection Refused
+
+**Issue:** Cannot connect to RDS from local machine
+
+**Solution:** RDS is in private subnet - use one of these:
+- Deploy bastion host in public subnet
+- Use AWS Systems Manager Session Manager
+- Connect from EC2 instance in same VPC
+- Set up VPN connection to VPC
+
+#### 6. State Lock Error
+
+```bash
+# Force unlock (use with caution!)
+terraform force-unlock <LOCK_ID>
+```
+
+### Debug Mode
+
+Enable Terraform debug logging:
+
+```bash
+export TF_LOG=DEBUG
+export TF_LOG_PATH=./terraform-debug.log
+terraform apply
+```
+
+## 📊 Outputs Reference
+
+After deployment, access outputs:
+
+```bash
+terraform output          # All outputs
+terraform output vpc_id   # Specific output
+terraform output -json    # JSON format
+```
+
+**Available Outputs:**
+
+| Output | Description | Example |
+|--------|-------------|---------|
+| `vpc_id` | VPC identifier | `vpc-0303c07bcadfa2ccc` |
+| `public_subnet_ids` | Public subnet IDs | `["subnet-xxx", "subnet-yyy"]` |
+| `private_subnet_ids` | Private subnet IDs | `["subnet-zzz", "subnet-aaa"]` |
+| `cognito_user_pool_id` | Cognito pool ID | `us-east-1_prWz1uVda` |
+| `cognito_user_pool_arn` | Cognito pool ARN | `arn:aws:cognito-idp:...` |
+| `cognito_app_client_id` | App client ID | `45tb7gep1lgjq8n9f5f4dpk1jd` |
+| `lambda_create_auth_challenge_arn` | Create auth Lambda ARN | `arn:aws:lambda:...` |
+| `lambda_define_auth_challenge_arn` | Define auth Lambda ARN | `arn:aws:lambda:...` |
+| `lambda_verify_auth_challenge_arn` | Verify auth Lambda ARN | `arn:aws:lambda:...` |
+| `rds_cluster_endpoint` | Writer endpoint | `dev-aurora-cluster.cluster-xxx.rds.amazonaws.com` |
+| `rds_reader_endpoint` | Reader endpoint | `dev-aurora-cluster.cluster-ro-xxx.rds.amazonaws.com` |
+| `rds_port` | Database port | `5432` |
+| `rds_database_name` | Database name | `cas_cms` |
+| `rds_secrets_manager_name` | Secret name | `dev-db-credentials` |
+| `rds_secrets_manager_arn` | Secret ARN | `arn:aws:secretsmanager:...` |
+
+## 📚 Additional Resources
+
+- **Lambda OTP Documentation:** [`modules/lambda_cognito_trigger/README.md`](modules/lambda_cognito_trigger/README.md)
+- **AWS Cognito Custom Auth:** https://docs.aws.amazon.com/cognito/latest/developerguide/amazon-cognito-user-pools-authentication-flow.html
+- **Aurora Serverless v2:** https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/aurora-serverless-v2.html
+- **Terraform Best Practices:** https://www.terraform-best-practices.com/
 
 ## 📝 License
 
-This project is for personal use.
+This project is for personal/educational use.
 
 ## 👤 Author
 
 **Madhukeshwar Patil**
 - GitHub: [@MadhukeshwarPatil](https://github.com/MadhukeshwarPatil)
-
-## 🤝 Contributing
-
-This is a personal project. If you clone it, feel free to modify it for your own use.
+- Repository: [terraform-cas-pratice](https://github.com/MadhukeshwarPatil/terraform-cas-pratice)
 
 ---
 

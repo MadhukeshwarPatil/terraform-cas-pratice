@@ -166,8 +166,8 @@ resource "aws_rds_cluster_instance" "writer" {
   db_parameter_group_name = aws_db_parameter_group.main.name
 
   # Performance Insights
-  performance_insights_enabled    = var.performance_insights_enabled
-  performance_insights_kms_key_id = var.kms_key_id
+  performance_insights_enabled          = var.performance_insights_enabled
+  performance_insights_kms_key_id       = var.kms_key_id
   performance_insights_retention_period = var.performance_insights_retention_period
 
   # Monitoring
@@ -198,8 +198,8 @@ resource "aws_rds_cluster_instance" "reader" {
   db_parameter_group_name = aws_db_parameter_group.main.name
 
   # Performance Insights
-  performance_insights_enabled    = var.performance_insights_enabled
-  performance_insights_kms_key_id = var.kms_key_id
+  performance_insights_enabled          = var.performance_insights_enabled
+  performance_insights_kms_key_id       = var.kms_key_id
   performance_insights_retention_period = var.performance_insights_retention_period
 
   # Monitoring

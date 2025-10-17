@@ -11,13 +11,111 @@ module "vpc" {
   availability_zones   = ["us-east-1a", "us-east-1b"]
 }
 
+# Step 1: Cognito User Pool (created first WITHOUT triggers)
 module "cognito" {
   source = "../../modules/cognito"
 
-  env_prefix         = "dev"
-  user_pool_name     = "dev-strapi-user-pool"
-  app_client_name    = "dev-strapi-cms-userpool"
-  enable_lambda_triggers = false
+  env_prefix                         = "dev"
+  user_pool_name                     = "dev-strapi-user-pool"
+  app_client_name                    = "dev-strapi-cms-userpool"
+  
+  # Initially created without triggers
+  enable_lambda_triggers             = false
+  create_auth_challenge_lambda_arn   = null
+  define_auth_challenge_lambda_arn   = null
+  verify_auth_challenge_lambda_arn   = null
+}
+
+# Step 2: Lambda Functions (created after Cognito exists)
+module "lambda_cognito_trigger" {
+  source = "../../modules/lambda_cognito_trigger"
+
+  environment            = "dev"
+  cognito_user_pool_arn  = module.cognito.user_pool_arn
+  cognito_user_pool_id   = module.cognito.user_pool_id
+  
+  # OTP Secret (should be a long random hex string - store in terraform.tfvars)
+  otp_secret = var.otp_secret
+  
+  # Optional: Social login configuration (uncomment and configure if needed)
+  # google_audience      = var.google_audience
+  # facebook_app_id      = var.facebook_app_id
+  # facebook_app_secret  = var.facebook_app_secret
+  # apple_audience       = var.apple_audience
+  
+  # Enable jose layer for social login support
+  enable_jose_layer = true
+  
+  tags = {
+    Environment = "dev"
+    Project     = "CAS-CMS"
+  }
+  
+  depends_on = [module.cognito]
+}
+
+# Step 3: Attach Lambda triggers to Cognito (after Lambda functions exist)
+resource "null_resource" "attach_lambda_triggers" {
+  # This resource attaches Lambda triggers to Cognito User Pool
+  # Triggers when Lambda ARNs change
+  triggers = {
+    cognito_user_pool_id             = module.cognito.user_pool_id
+    create_auth_challenge_arn        = module.lambda_cognito_trigger.create_auth_challenge_function_arn
+    define_auth_challenge_arn        = module.lambda_cognito_trigger.define_auth_challenge_function_arn
+    verify_auth_challenge_arn        = module.lambda_cognito_trigger.verify_auth_challenge_function_arn
+  }
+
+  # Attach triggers after Lambda functions are created
+  provisioner "local-exec" {
+    command = <<-EOT
+      aws cognito-idp update-user-pool \
+        --user-pool-id ${module.cognito.user_pool_id} \
+        --lambda-config \
+          CreateAuthChallenge=${module.lambda_cognito_trigger.create_auth_challenge_function_arn},\
+DefineAuthChallenge=${module.lambda_cognito_trigger.define_auth_challenge_function_arn},\
+VerifyAuthChallengeResponse=${module.lambda_cognito_trigger.verify_auth_challenge_function_arn}
+    EOT
+  }
+
+  # Detach triggers before destroying Lambda functions
+  provisioner "local-exec" {
+    when    = destroy
+    command = <<-EOT
+      aws cognito-idp update-user-pool \
+        --user-pool-id ${self.triggers.cognito_user_pool_id} \
+        --lambda-config '{}'
+    EOT
+  }
+
+  depends_on = [
+    module.cognito,
+    module.lambda_cognito_trigger
+  ]
+}
+
+# Lambda Permissions for Cognito to invoke the functions
+resource "aws_lambda_permission" "allow_cognito_create_auth_challenge" {
+  statement_id  = "AllowCognitoInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = module.lambda_cognito_trigger.create_auth_challenge_function_name
+  principal     = "cognito-idp.amazonaws.com"
+  source_arn    = module.cognito.user_pool_arn
+}
+
+resource "aws_lambda_permission" "allow_cognito_define_auth_challenge" {
+  statement_id  = "AllowCognitoInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = module.lambda_cognito_trigger.define_auth_challenge_function_name
+  principal     = "cognito-idp.amazonaws.com"
+  source_arn    = module.cognito.user_pool_arn
+}
+
+resource "aws_lambda_permission" "allow_cognito_verify_auth_challenge" {
+  statement_id  = "AllowCognitoInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = module.lambda_cognito_trigger.verify_auth_challenge_function_name
+  principal     = "cognito-idp.amazonaws.com"
+  source_arn    = module.cognito.user_pool_arn
 }
 
 module "rds" {
@@ -110,4 +208,20 @@ output "rds_secrets_manager_arn" {
 output "rds_secrets_manager_name" {
   description = "The name of the Secrets Manager secret"
   value       = module.rds.secrets_manager_secret_name
+}
+
+# Lambda Outputs
+output "lambda_create_auth_challenge_arn" {
+  description = "ARN of the Create Auth Challenge Lambda function"
+  value       = module.lambda_cognito_trigger.create_auth_challenge_function_arn
+}
+
+output "lambda_define_auth_challenge_arn" {
+  description = "ARN of the Define Auth Challenge Lambda function"
+  value       = module.lambda_cognito_trigger.define_auth_challenge_function_arn
+}
+
+output "lambda_verify_auth_challenge_arn" {
+  description = "ARN of the Verify Auth Challenge Lambda function"
+  value       = module.lambda_cognito_trigger.verify_auth_challenge_function_arn
 }

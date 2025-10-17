@@ -8,6 +8,17 @@ resource "aws_cognito_user_pool" "main" {
   # Username attributes - allow sign in with preferred_username, phone_number, email
   alias_attributes = ["preferred_username", "phone_number", "email"]
 
+  # Lambda triggers configuration
+  # Only attach triggers if all Lambda ARNs are provided
+  dynamic "lambda_config" {
+    for_each = var.create_auth_challenge_lambda_arn != null && var.define_auth_challenge_lambda_arn != null && var.verify_auth_challenge_lambda_arn != null ? [1] : []
+    content {
+      create_auth_challenge          = var.create_auth_challenge_lambda_arn
+      define_auth_challenge          = var.define_auth_challenge_lambda_arn
+      verify_auth_challenge_response = var.verify_auth_challenge_lambda_arn
+    }
+  }
+
   # Auto-verified attributes
   auto_verified_attributes = []
 
@@ -87,8 +98,8 @@ resource "aws_cognito_user_pool" "main" {
     mutable             = true
 
     number_attribute_constraints {
-      min_value = 100000  # 6-digit OTP minimum
-      max_value = 999999  # 6-digit OTP maximum
+      min_value = 0
+      max_value = 2147483647
     }
   }
 
@@ -204,19 +215,4 @@ resource "aws_cognito_user_pool_client" "main" {
 
   # Auth session validity
   auth_session_validity = 15 # 15 minutes
-}
-
-# Lambda triggers (if Lambda functions are provided)
-resource "aws_cognito_user_pool" "lambda_config" {
-  count = var.enable_lambda_triggers ? 1 : 0
-  name  = "${var.env_prefix}-user-pool-with-lambda"
-
-  lambda_config {
-    create_auth_challenge          = var.create_auth_challenge_lambda_arn
-    define_auth_challenge          = var.define_auth_challenge_lambda_arn
-    verify_auth_challenge_response = var.verify_auth_challenge_lambda_arn
-  }
-
-  # Inherit all other configurations from main user pool
-  # (This is a placeholder - in practice, you'd configure the lambda_config on the main resource)
 }
