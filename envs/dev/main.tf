@@ -15,37 +15,37 @@ module "vpc" {
 module "cognito" {
   source = "../../modules/cognito"
 
-  env_prefix                         = "dev"
-  user_pool_name                     = "dev-strapi-user-pool"
-  app_client_name                    = "dev-strapi-cms-userpool"
-  
+  env_prefix      = "dev"
+  user_pool_name  = "dev-strapi-user-pool"
+  app_client_name = "dev-strapi-cms-userpool"
+
   # Initially created without triggers
-  enable_lambda_triggers             = false
-  create_auth_challenge_lambda_arn   = null
-  define_auth_challenge_lambda_arn   = null
-  verify_auth_challenge_lambda_arn   = null
+  enable_lambda_triggers           = false
+  create_auth_challenge_lambda_arn = null
+  define_auth_challenge_lambda_arn = null
+  verify_auth_challenge_lambda_arn = null
 }
 
 # Step 2: Lambda Functions (created after Cognito exists)
 module "lambda_cognito_trigger" {
   source = "../../modules/lambda_cognito_trigger"
 
-  environment            = "dev"
-  cognito_user_pool_arn  = module.cognito.user_pool_arn
-  cognito_user_pool_id   = module.cognito.user_pool_id
-  
+  environment           = "dev"
+  cognito_user_pool_arn = module.cognito.user_pool_arn
+  cognito_user_pool_id  = module.cognito.user_pool_id
+
   # OTP Secret (should be a long random hex string - store in terraform.tfvars)
   otp_secret = var.otp_secret
-  
+
   # Optional: Social login configuration (uncomment and configure if needed)
   # google_audience      = var.google_audience
   # facebook_app_id      = var.facebook_app_id
   # facebook_app_secret  = var.facebook_app_secret
   # apple_audience       = var.apple_audience
-  
+
   # Enable jose layer for social login support
   enable_jose_layer = true
-  
+
   depends_on = [module.cognito]
 }
 
@@ -54,10 +54,10 @@ resource "null_resource" "attach_lambda_triggers" {
   # This resource attaches Lambda triggers to Cognito User Pool
   # Triggers when Lambda ARNs change
   triggers = {
-    cognito_user_pool_id             = module.cognito.user_pool_id
-    create_auth_challenge_arn        = module.lambda_cognito_trigger.create_auth_challenge_function_arn
-    define_auth_challenge_arn        = module.lambda_cognito_trigger.define_auth_challenge_function_arn
-    verify_auth_challenge_arn        = module.lambda_cognito_trigger.verify_auth_challenge_function_arn
+    cognito_user_pool_id      = module.cognito.user_pool_id
+    create_auth_challenge_arn = module.lambda_cognito_trigger.create_auth_challenge_function_arn
+    define_auth_challenge_arn = module.lambda_cognito_trigger.define_auth_challenge_function_arn
+    verify_auth_challenge_arn = module.lambda_cognito_trigger.verify_auth_challenge_function_arn
   }
 
   # Attach triggers after Lambda functions are created
@@ -65,10 +65,11 @@ resource "null_resource" "attach_lambda_triggers" {
     command = <<-EOT
       aws cognito-idp update-user-pool \
         --user-pool-id ${module.cognito.user_pool_id} \
-        --lambda-config \
-          CreateAuthChallenge=${module.lambda_cognito_trigger.create_auth_challenge_function_arn},\
-DefineAuthChallenge=${module.lambda_cognito_trigger.define_auth_challenge_function_arn},\
-VerifyAuthChallengeResponse=${module.lambda_cognito_trigger.verify_auth_challenge_function_arn}
+        --lambda-config '{
+          "CreateAuthChallenge": "${module.lambda_cognito_trigger.create_auth_challenge_function_arn}",
+          "DefineAuthChallenge": "${module.lambda_cognito_trigger.define_auth_challenge_function_arn}",
+          "VerifyAuthChallengeResponse": "${module.lambda_cognito_trigger.verify_auth_challenge_function_arn}"
+        }'
     EOT
   }
 
@@ -126,19 +127,19 @@ module "rds" {
   # 1. terraform.tfvars (not committed to git)
   # 2. Environment variables: TF_VAR_db_username and TF_VAR_db_password
   # 3. Command line: -var="db_username=xxx" -var="db_password=xxx"
-  db_username     = var.db_username
-  db_password     = var.db_password
-  database_name   = "auth_cms"
-  
+  db_username   = var.db_username
+  db_password   = var.db_password
+  database_name = "auth_cms"
+
   # Aurora Serverless v2 configuration
-  min_capacity    = 0.5
-  max_capacity    = 1.0
-  
+  min_capacity = 0.5
+  max_capacity = 1.0
+
   # Development settings
-  skip_final_snapshot  = true
-  deletion_protection  = false
-  publicly_accessible  = false
-  
+  skip_final_snapshot = true
+  deletion_protection = false
+  publicly_accessible = false
+
   # Optional: Create reader instance
   create_reader_instance = false
 }
